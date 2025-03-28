@@ -1,149 +1,187 @@
 using System.Collections.Generic;
+using UnityEngine;
+using UnityEditor;
 
 using Object = UnityEngine.Object;
-using Debug = UnityEngine.Debug;
-using AssetDatabase = UnityEditor.AssetDatabase;
 
 namespace NaxtorGames.AssetRenamer.EditorScripts
 {
     public sealed class AssetRenamer
     {
-        public int RenameOrderCount => RenameOrders.Count;
-        public int PreviewNameCount => PreviewNames.Count;
-
-        private readonly List<string> PreviewNames = new List<string>();
-        private readonly List<AssetRenameOrder> RenameOrders = new List<AssetRenameOrder>();
-
-        public AssetRenameOrder CreateNewOrder(EditType editType = EditType.Rename)
+        public enum ObjectType
         {
-            AssetRenameOrder newOrder = new AssetRenameOrder(editType);
-
-            return newOrder;
+            None,
+            Asset,
+            SceneObject
         }
 
-        public AssetRenameOrder CreateNewOrder(AssetRenameOrder assetRenameOrderToCopy)
-        {
-            AssetRenameOrder newOrder = new AssetRenameOrder(assetRenameOrderToCopy);
+        private readonly List<string> _previewNames = new List<string>();
+        private readonly List<RenameOrder> _renameOrders = new List<RenameOrder>();
 
-            return newOrder;
+        public int OrderCount => _renameOrders.Count;
+        public int PreviewNameCount => _previewNames.Count;
+
+        public RenameOrder CreateNewOrder(EditType editType = EditType.Rename)
+        {
+            return new RenameOrder(editType);
         }
 
-        public void AddNewOrder(AssetRenameOrder newAssetRenameOrder)
+        public RenameOrder CreateNewOrder(RenameOrder renameOrderToCopy)
         {
-            RenameOrders.Add(newAssetRenameOrder);
+            return new RenameOrder(renameOrderToCopy);
         }
 
-        public void RemoveOrder(AssetRenameOrder assetRenameOrderToRemove)
+        public void AddNewOrder(RenameOrder newAssetRenameOrder)
         {
-            RenameOrders.Remove(assetRenameOrderToRemove);
+            _renameOrders.Add(newAssetRenameOrder);
         }
 
-        public AssetRenameOrder GetRenameOrderAtIndex(int index)
+        public void RemoveOrder(RenameOrder renameOrderToRemove)
         {
-            if (index < 0 || index >= RenameOrderCount)
+            _ = _renameOrders.Remove(renameOrderToRemove);
+        }
+
+        public RenameOrder GetRenameOrderAtIndex(int index)
+        {
+            if (index < 0 || index >= this.OrderCount)
             {
                 Debug.LogWarning("Index is out of Range");
                 return null;
             }
 
-            return RenameOrders[index];
+            return _renameOrders[index];
         }
 
-        public void MoveOrderUp(AssetRenameOrder assetRenameOrder, int currentIndex)
+        public void MoveOrderUp(RenameOrder renameOrder, int currentIndex)
         {
             int newIndex = currentIndex - 1;
-            MoveOrder(assetRenameOrder, currentIndex, newIndex);
+            MoveOrder(renameOrder, currentIndex, newIndex);
         }
 
-        public void MoveOrderDown(AssetRenameOrder assetRenameOrder, int currentIndex)
+        public void MoveOrderDown(RenameOrder renameOrder, int currentIndex)
         {
             int newIndex = currentIndex + 1;
-            MoveOrder(assetRenameOrder, currentIndex, newIndex);
+            MoveOrder(renameOrder, currentIndex, newIndex);
         }
 
-        public void MoveOrder(AssetRenameOrder assetRenameOrder, int currentIndex, int newIndex)
+        public void MoveOrder(RenameOrder renameOrder, int currentIndex, int newIndex)
         {
-            RenameOrders.RemoveAt(currentIndex);
-            RenameOrders.Insert(newIndex, assetRenameOrder);
+            _renameOrders.RemoveAt(currentIndex);
+            _renameOrders.Insert(newIndex, renameOrder);
         }
 
-        public void ExecuteRenameOrders(Object asset, int index = -1, bool preview = false)
+        public void ExecuteRenameOrders(Object objectInstance, int index = -1, bool preview = false)
         {
-            if (asset == null)
+            if (objectInstance == null)
             {
                 return;
             }
 
-            string assetName = GetAssetName(asset, out string assetPath);
+            ObjectType objectType = GetAssetName(objectInstance, out string assetName, out string assetPath);
+
+            if (objectType == ObjectType.None)
+            {
+                Debug.LogError($"{objectInstance.name} is neither an asset nor an scene object.");
+                return;
+            }
 
             FileNameData fileNameData = new FileNameData(assetName);
 
-            foreach (AssetRenameOrder renameOrder in RenameOrders)
+            foreach (RenameOrder renameOrder in _renameOrders)
             {
-                renameOrder.ExecuteOrder(asset, ref fileNameData, index);
+                _ = renameOrder.ExecuteOrder(ref fileNameData, index);
             }
 
             if (preview)
             {
-                AddToPreviewNameList(assetName, fileNameData.FullFileName, index);
+                AddToPreviewNameList(assetName, fileNameData.FullFileName, index, objectType == ObjectType.Asset);
             }
             else
             {
-                AssetDatabase.RenameAsset(assetPath, fileNameData.FullFileName);
+                if (objectType == ObjectType.Asset)
+                {
+                    string result = AssetDatabase.RenameAsset(assetPath, fileNameData.FullFileName);
+
+                    if (!string.IsNullOrWhiteSpace(result))
+                    {
+                        Debug.LogError(result);
+                    }
+                }
+                else if (objectType == ObjectType.SceneObject)
+                {
+                    Undo.RecordObject(objectInstance, $"Scene object renamed");
+                    objectInstance.name = fileNameData.FileName;
+                }
             }
         }
 
-        public void AddToPreviewNameList(string currentName, string newName, int elementIndex)
+        public void AddToPreviewNameList(string currentName, string newName, int elementIndex, bool isAsset)
         {
             if (elementIndex == -1)
             {
                 elementIndex = 0;
             }
 
-            PreviewNames.Add($"<b>Element {elementIndex}:</b>\n<b>{currentName}</b>\n<b>{newName}</b>");
+            _previewNames.Add($"<b>Element {elementIndex}: ({(isAsset ? "Asset" : "Scene Object")})</b>\n<b>{currentName}</b>\n<b>{newName}</b>");
         }
 
-        public string GetPreviwNameAtIndex(int index)
+        public string GetPreviewNameAtIndex(int index)
         {
-            if (index < 0 || index >= PreviewNameCount)
+            if (index < 0 || index >= this.PreviewNameCount)
             {
                 Debug.LogWarning("Index is out of Range");
                 return null;
             }
 
-            return PreviewNames[index];
+            return _previewNames[index];
         }
 
         public void ClearPreviewNames()
         {
-            PreviewNames.Clear();
+            _previewNames.Clear();
         }
 
         public void ClearOrders()
         {
-            RenameOrders.Clear();
+            _renameOrders.Clear();
         }
 
         public void UpdateOrderNames()
         {
-            foreach (AssetRenameOrder renameOrder in RenameOrders)
+            foreach (RenameOrder renameOrder in _renameOrders)
             {
                 renameOrder.UpdateOrderName();
             }
         }
 
-        private static string GetAssetName(Object asset, out string assetPath)
+        private static ObjectType GetAssetName(Object asset, out string assetName, out string assetPath)
         {
-            assetPath = AssetDatabase.GetAssetPath(asset);
+            if (asset == null)
+            {
+                assetName = string.Empty;
+                assetPath = string.Empty;
+                return ObjectType.None;
+            }
 
-            return GetAssetNameFromPath(assetPath);
+            assetPath = AssetDatabase.GetAssetPath(asset);
+            if (string.IsNullOrWhiteSpace(assetPath))
+            {
+                assetName = asset.name;
+                assetPath = string.Empty;
+                return ObjectType.SceneObject;
+            }
+            else
+            {
+                assetName = GetAssetNameFromPath(assetPath);
+                return ObjectType.Asset;
+            }
         }
 
         private static string GetAssetNameFromPath(string assetPath)
         {
-            string[] splittedPath = assetPath.Split('/');
+            string[] splitPath = assetPath.Split('/');
 
-            return splittedPath[splittedPath.Length - 1];
+            return splitPath[splitPath.Length - 1];
         }
     }
 }

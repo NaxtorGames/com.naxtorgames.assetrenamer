@@ -7,7 +7,7 @@ using Object = UnityEngine.Object;
 namespace NaxtorGames.AssetRenamer.EditorScripts
 {
     [Serializable]
-    public sealed class AssetRenameOrder
+    public sealed class RenameOrder
     {
         [HideInInspector]
         public string OrderName;
@@ -27,7 +27,7 @@ namespace NaxtorGames.AssetRenamer.EditorScripts
         public int InsertIndex;
         public bool ReverseInsert;
 
-        public AssetRenameOrder(EditType editType = EditType.Rename)
+        public RenameOrder(EditType editType = EditType.Rename)
         {
             Execute = true;
             EditType = editType;
@@ -49,7 +49,7 @@ namespace NaxtorGames.AssetRenamer.EditorScripts
         /// <summary>
         /// A deep copy of an Asset Rename Order.
         /// </summary>
-        public AssetRenameOrder(AssetRenameOrder assetRenameOrderToCopy)
+        public RenameOrder(RenameOrder assetRenameOrderToCopy)
         {
             Execute = assetRenameOrderToCopy.Execute;
             EditType = assetRenameOrderToCopy.EditType;
@@ -69,49 +69,29 @@ namespace NaxtorGames.AssetRenamer.EditorScripts
 
         public void UpdateOrderName()
         {
-            switch (EditType)
+            OrderName = EditType switch
             {
-                case EditType.Rename:
-                    OrderName = "Rename";
-                    break;
-                case EditType.Replace:
-                    OrderName = "Replace";
-                    break;
-                case EditType.Insert:
-                    OrderName = "Insert";
-                    break;
-                default:
-                    OrderName = "None";
-                    break;
-            }
+                EditType.Rename => "Rename",
+                EditType.Replace => "Replace",
+                EditType.Insert => "Insert",
+                _ => "None",
+            };
         }
 
-        public bool ExecuteOrder(Object objectToExecuteOn, ref FileNameData fileNameData, int index = -1)
+        public bool ExecuteOrder(ref FileNameData fileNameData, int index = -1)
         {
-            if (!Execute || objectToExecuteOn == null)
+            if (!Execute)
             {
                 return false;
             }
 
-            switch (EditType)
+            return EditType switch
             {
-                case EditType.Rename:
-                    {
-                        return Rename(ref fileNameData, index);
-                    }
-                case EditType.Replace:
-                    {
-                        return Replace(ref fileNameData);
-                    }
-                case EditType.Insert:
-                    {
-                        return Insert(ref fileNameData);
-                    }
-                default:
-                    {
-                        return false;
-                    }
-            }
+                EditType.Rename => Rename(ref fileNameData, index),
+                EditType.Replace => Replace(ref fileNameData),
+                EditType.Insert => Insert(ref fileNameData),
+                _ => false
+            };
         }
 
         private bool Rename(ref FileNameData fileNameData, int index = -1)
@@ -156,14 +136,14 @@ namespace NaxtorGames.AssetRenamer.EditorScripts
                 {
                     if (insertIndex > 0 && j == indexToInsert)
                     {
-                        sb.Append(InsertText);
+                        _ = sb.Append(InsertText);
                     }
 
-                    sb.Append(fileNameData.FileName[j]);
+                    _ = sb.Append(fileNameData.FileName[j]);
                 }
                 if (insertIndex == 0)
                 {
-                    sb.Append(InsertText);
+                    _ = sb.Append(InsertText);
                 }
 
                 fileNameData.FileName = sb.ToString();
