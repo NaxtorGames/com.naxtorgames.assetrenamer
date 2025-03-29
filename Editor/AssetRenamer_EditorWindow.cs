@@ -4,6 +4,7 @@ using UnityEditor;
 using NaxtorGames.Utillity.EditorScripts;
 
 using static UnityEditor.EditorGUILayout;
+using System.Linq;
 
 namespace NaxtorGames.AssetRenamer.EditorScripts
 {
@@ -22,11 +23,14 @@ namespace NaxtorGames.AssetRenamer.EditorScripts
         private static bool s_foldoutOrders = true;
         private static bool s_foldoutPreview = false;
 
+        private static bool s_removeEmptiesOnValidate = true;
+        private static bool s_removeDuplicatesOnValidate = true;
+
         private readonly AssetRenamer _assetRenamer = new AssetRenamer();
         private readonly Dictionary<RenameOrder, bool> _renameOrderFoldoutStatus = new Dictionary<RenameOrder, bool>();
 
         [SerializeField] private List<Object> _assetsToRename = new List<Object>();
-        [SerializeField] private bool _forceAutoPreview = false;
+        [SerializeField] private bool _enableAutoPreview = false;
 
         private SerializedObject _thisSerializedObject = null;
         private SerializedProperty _assetsToRenameProperty = null;
@@ -35,6 +39,9 @@ namespace NaxtorGames.AssetRenamer.EditorScripts
         private Vector2 _aseetsScrollPosition = Vector2.zero;
         private Vector2 _orderScrollPosition = Vector2.zero;
         private Vector2 _previewScrollPosition = Vector2.zero;
+
+        private int _assetDuplicates = 0;
+        private int _assetEmpties = 0;
 
         private static GUIStyle RichTextLabel
         {
@@ -117,7 +124,7 @@ namespace NaxtorGames.AssetRenamer.EditorScripts
             {
                 _assetRenamer.UpdateOrderNames();
 
-                if (_forceAutoPreview)
+                if (_enableAutoPreview && s_foldoutPreview && _assetsToRename.Count < MAX_OBJECTS_FOR_AUTO_PREVIEW)
                 {
                     ExecuteRenaming(preview: true);
                 }
@@ -137,13 +144,19 @@ namespace NaxtorGames.AssetRenamer.EditorScripts
 
             _ = BeginHorizontal();
 
-            s_foldoutAssets = Foldout(s_foldoutAssets, s_foldoutAssets ? "Assets" : $"Assets ({_assetsToRename.Count})", true, EditorStyles.foldoutHeader);
+            s_foldoutAssets = Foldout(s_foldoutAssets, (s_foldoutAssets ? "Assets" : $"Assets ({_assetsToRename.Count})") + $" [Empties: {_assetEmpties} | Duplicates: {_assetDuplicates}]", true, EditorStyles.foldoutHeader);
 
-            EditorGUI.BeginDisabledGroup(_assetsToRename.Count <= 0);
-            if (GUILayout.Button("Clear", GUILayout.Width(75.0f)))
+            EditorGUI.BeginDisabledGroup(_assetsToRename.Count == 0);
+            if (GUILayout.Button(new GUIContent("Check", "Check for duplicates or empty entries."), GUILayout.Width(50.0f)))
+            {
+                ValidateAssets(false, false, out _assetEmpties, out _assetDuplicates);
+            }
+            if (GUILayout.Button(new GUIContent("Clear", "Clear asset list."), GUILayout.Width(50.0f)))
             {
                 _assetsToRename.Clear();
                 _assetRenamer.ClearPreviewNames();
+                _assetEmpties = 0;
+                _assetDuplicates = 0;
             }
             EditorGUI.EndDisabledGroup();
 
@@ -151,20 +164,57 @@ namespace NaxtorGames.AssetRenamer.EditorScripts
 
             if (s_foldoutAssets)
             {
+                EditorGUI.indentLevel++;
+
+                if (_assetsToRename.Count > 0)
+                {
+                    _ = BeginHorizontal();
+
+                    float fieldWidth = EditorGUIUtility.fieldWidth;
+                    float labelWidth = EditorGUIUtility.labelWidth;
+                    EditorGUIUtility.fieldWidth = 16.0f;
+                    EditorGUIUtility.labelWidth = 75.0f;
+                    s_removeEmptiesOnValidate = ToggleLeft(new GUIContent("Empties"), s_removeEmptiesOnValidate);
+                    s_removeDuplicatesOnValidate = ToggleLeft(new GUIContent("Duplicates"), s_removeDuplicatesOnValidate);
+                    EditorGUIUtility.fieldWidth = fieldWidth;
+                    EditorGUIUtility.labelWidth = labelWidth;
+
+                    GUILayout.FlexibleSpace();
+
+                    if (GUILayout.Button(new GUIContent("Remove", "Remove duplicates or empty entries when option is checked."), GUILayout.Width(103.0f)))
+                    {
+                        ValidateAssets(s_removeEmptiesOnValidate, s_removeDuplicatesOnValidate, out _assetEmpties, out _assetDuplicates);
+                    }
+
+                    EndHorizontal();
+                }
+
+                bool assetsChanged;
+
                 if (_assetsToRenameProperty.isExpanded)
                 {
                     _aseetsScrollPosition = BeginScrollView(_aseetsScrollPosition, GUI.skin.box,
                                 GUILayout.MinHeight(64.0f - 8.0f + (1 * (EditorGUIUtility.singleLineHeight + 2.0f))),
                                 GUILayout.MaxHeight(64.0f - 8.0f + (Mathf.Clamp(_assetsToRename.Count, 1, 12) * (EditorGUIUtility.singleLineHeight + 2.0f))));
 
-                    EditorHelpers.DrawPropertyField(_assetsToRenameProperty, true);
+                    EditorGUI.BeginChangeCheck();
+                    _ = PropertyField(_assetsToRenameProperty, new GUIContent("", "Assets to rename"), true);
+                    assetsChanged = EditorGUI.EndChangeCheck();
 
                     EndScrollView();
                 }
                 else
                 {
-                    EditorHelpers.DrawPropertyField(_assetsToRenameProperty, true);
+                    EditorGUI.BeginChangeCheck();
+                    _ = PropertyField(_assetsToRenameProperty, new GUIContent("", "Assets to rename"), true);
+                    assetsChanged = EditorGUI.EndChangeCheck();
                 }
+
+                if (assetsChanged)
+                {
+                    ValidateAssets(false, false, out _assetEmpties, out _assetDuplicates);
+                }
+                EditorGUI.indentLevel--;
             }
 
             EndVertical();
@@ -213,7 +263,7 @@ namespace NaxtorGames.AssetRenamer.EditorScripts
 
                 _ = BeginHorizontal();
                 EditorGUI.BeginDisabledGroup(_assetsToRename.Count == 0 || _assetRenamer.OrderCount == 0);
-                if (GUILayout.Button("Execute Renaming"))
+                if (GUILayout.Button("Execute Orders"))
                 {
                     ExecuteRenaming(preview: false);
                 }
@@ -232,7 +282,7 @@ namespace NaxtorGames.AssetRenamer.EditorScripts
 
             s_foldoutPreview = Foldout(s_foldoutPreview, "Preview", true, EditorStyles.foldoutHeader);
 
-            _forceAutoPreview = ToggleLeft(new GUIContent("Auto", $"Updates the Preview List every time anything in this Window changes.\nMax Object count for auto preview: {MAX_OBJECTS_FOR_AUTO_PREVIEW}"), _forceAutoPreview, GUILayout.Width(50.0f));
+            _enableAutoPreview = ToggleLeft(new GUIContent("Auto", $"Updates the Preview List every time anything in this Window changes.\nMax Object count for auto preview: {MAX_OBJECTS_FOR_AUTO_PREVIEW}"), _enableAutoPreview, GUILayout.Width(50.0f));
 
             EditorGUI.BeginDisabledGroup(_assetsToRename.Count == 0 || _assetRenamer.OrderCount == 0);
             if (GUILayout.Button("Update", GUILayout.Width(75.0f)))
@@ -337,7 +387,7 @@ namespace NaxtorGames.AssetRenamer.EditorScripts
             _ = BeginVertical(WindowStyle);
             _previewScrollPosition = BeginScrollView(_previewScrollPosition,
                 GUILayout.MinHeight(16.0f + (1 * EditorGUIUtility.singleLineHeight * 3.0f)),
-                GUILayout.MaxHeight(16.0f + (Mathf.Min(6, _assetsToRename.Count) * EditorGUIUtility.singleLineHeight * 3.0f)));
+                GUILayout.MaxHeight(16.0f + (Mathf.Min(6, _assetsToRename.Count - _assetEmpties) * EditorGUIUtility.singleLineHeight * 3.0f)));
 
             EditorGUI.BeginDisabledGroup(true);
             for (int i = 0; i < _assetRenamer.PreviewNameCount; i++)
@@ -350,6 +400,18 @@ namespace NaxtorGames.AssetRenamer.EditorScripts
             EndScrollView();
 
             EndVertical();
+        }
+
+        private void AddNewOrder(RenameOrder newAssetRenameOrder)
+        {
+            _assetRenamer.AddNewOrder(newAssetRenameOrder);
+            _renameOrderFoldoutStatus.Add(newAssetRenameOrder, true);
+        }
+
+        private void RemoveOrder(RenameOrder assetRenameOrderToRemove)
+        {
+            _assetRenamer.RemoveOrder(assetRenameOrderToRemove);
+            _ = _renameOrderFoldoutStatus.Remove(assetRenameOrderToRemove);
         }
 
         /// <param name="preview">if true only names are saved but not changed.</param>
@@ -370,16 +432,38 @@ namespace NaxtorGames.AssetRenamer.EditorScripts
             }
         }
 
-        private void AddNewOrder(RenameOrder newAssetRenameOrder)
+        private void ValidateAssets(
+            bool removeEmpties,
+            bool removeDuplicates,
+            out int empties,
+            out int duplicates)
         {
-            _assetRenamer.AddNewOrder(newAssetRenameOrder);
-            _renameOrderFoldoutStatus.Add(newAssetRenameOrder, true);
-        }
+            if (_assetsToRename == null || _assetsToRename.Count == 0)
+            {
+                empties = 0;
+                duplicates = 0;
+                return;
+            }
 
-        private void RemoveOrder(RenameOrder assetRenameOrderToRemove)
-        {
-            _assetRenamer.RemoveOrder(assetRenameOrderToRemove);
-            _ = _renameOrderFoldoutStatus.Remove(assetRenameOrderToRemove);
+            if (removeEmpties)
+            {
+                _ = _assetsToRename.RemoveAll(asset => asset == null);
+            }
+
+            if (removeDuplicates)
+            {
+                _assetsToRename = _assetsToRename.Distinct().ToList();
+                duplicates = 0;
+            }
+            else
+            {
+                duplicates = _assetsToRename
+                    .GroupBy(asset => asset)
+                    .Where(group => group.Count() > 1)
+                    .Count();
+            }
+
+            empties = _assetsToRename.Count(asset => asset == null);
         }
     }
 }
