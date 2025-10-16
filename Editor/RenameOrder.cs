@@ -2,7 +2,6 @@ using Serializable = System.SerializableAttribute;
 using Math = System.Math;
 using StringBuilder = System.Text.StringBuilder;
 using HideInInspector = UnityEngine.HideInInspector;
-using Object = UnityEngine.Object;
 
 namespace NaxtorGames.AssetRenamer.EditorScripts
 {
@@ -17,6 +16,7 @@ namespace NaxtorGames.AssetRenamer.EditorScripts
         //Rename
         public string RenameName;
         public string RenameSuffix;
+        public int RenameDigitsCount = 2;
 
         //Replace
         public string ReplaceText;
@@ -35,6 +35,7 @@ namespace NaxtorGames.AssetRenamer.EditorScripts
 
             RenameName = string.Empty;
             RenameSuffix = "_";
+            RenameDigitsCount = 2;
 
             ReplaceText = string.Empty;
             ReplaceWithText = string.Empty;
@@ -56,6 +57,7 @@ namespace NaxtorGames.AssetRenamer.EditorScripts
 
             RenameName = new string(assetRenameOrderToCopy.RenameName);
             RenameSuffix = new string(assetRenameOrderToCopy.RenameSuffix);
+            RenameDigitsCount = assetRenameOrderToCopy.RenameDigitsCount;
 
             ReplaceText = new string(assetRenameOrderToCopy.ReplaceText);
             ReplaceWithText = new string(assetRenameOrderToCopy.ReplaceWithText);
@@ -78,7 +80,7 @@ namespace NaxtorGames.AssetRenamer.EditorScripts
             };
         }
 
-        public bool ExecuteOrder(ref FileNameData fileNameData, int index = -1)
+        public bool ExecuteOrder(ref FileNameData fileNameData, bool isPreview, int index = -1)
         {
             if (!Execute)
             {
@@ -87,43 +89,83 @@ namespace NaxtorGames.AssetRenamer.EditorScripts
 
             return EditType switch
             {
-                EditType.Rename => Rename(ref fileNameData, index),
-                EditType.Replace => Replace(ref fileNameData),
-                EditType.Insert => Insert(ref fileNameData),
+                EditType.Rename => Rename(ref fileNameData, isPreview, index),
+                EditType.Replace => Replace(ref fileNameData, isPreview),
+                EditType.Insert => Insert(ref fileNameData, isPreview),
                 _ => false
             };
         }
 
-        private bool Rename(ref FileNameData fileNameData, int index = -1)
+        private bool Rename(ref FileNameData fileNameData, bool isPreview, int index = -1)
         {
+            if (fileNameData.IsAsset && (RenameName.Contains('.') || RenameSuffix.Contains('.')))
+            {
+                string error = $"Cannot rename '{fileNameData.FullFileName}' — the new name or suffix contains a '.' which is not allowed for assets.";
+                if (isPreview)
+                {
+                    UnityEngine.Debug.LogWarning(error);
+                }
+                else
+                {
+                    throw new System.ArgumentException(error, $"{nameof(RenameName)} / {nameof(RenameSuffix)}");
+                }
+            }
+
             if (index == -1)
             {
                 fileNameData.FileName = $"{RenameName}{RenameSuffix}";
             }
             else
             {
-                fileNameData.FileName = $"{RenameName}{RenameSuffix}{index + 1:00}";
+                string numberSuffix = RenameDigitsCount > 0 ? (index + 1).ToString(FormatNumber(RenameDigitsCount)) : string.Empty;
+                fileNameData.FileName = $"{RenameName}{RenameSuffix}{numberSuffix}";
             }
 
             return true;
         }
 
-        private bool Replace(ref FileNameData fileNameData)
+        private bool Replace(ref FileNameData fileNameData, bool isPreview)
         {
             if (string.IsNullOrEmpty(ReplaceText) || !fileNameData.FileName.Contains(ReplaceText))
             {
                 return false;
             }
 
+            if (fileNameData.IsAsset && ReplaceText.Contains('.'))
+            {
+                string error = $"Cannot replace '{ReplaceText}' from '{fileNameData.FullFileName}' — the replace text contains a '.' which is not allowed for assets.";
+                if (isPreview)
+                {
+                    UnityEngine.Debug.LogWarning(error);
+                }
+                else
+                {
+                    throw new System.ArgumentException(error, nameof(ReplaceText));
+                }
+            }
+
             fileNameData.FileName = fileNameData.FileName.Replace(ReplaceText, ReplaceWithText);
             return true;
         }
 
-        private bool Insert(ref FileNameData fileNameData)
+        private bool Insert(ref FileNameData fileNameData, bool isPreview)
         {
             if (string.IsNullOrEmpty(InsertText))
             {
                 return false;
+            }
+
+            if (fileNameData.IsAsset && InsertText.Contains('.'))
+            {
+                string error = $"Cannot insert '{InsertText}' to '{fileNameData.FullFileName}' - the insert text contains a '.' which is not allowed for assets.";
+                if (isPreview)
+                {
+                    UnityEngine.Debug.LogWarning(error);
+                }
+                else
+                {
+                    throw new System.ArgumentException(error, nameof(InsertText));
+                }
             }
 
             int insertIndex = Math.Clamp(InsertIndex, 0, fileNameData.FileName.Length);
@@ -154,6 +196,16 @@ namespace NaxtorGames.AssetRenamer.EditorScripts
             }
 
             return true;
+        }
+
+        public static string FormatNumber(int number)
+        {
+            string suffix = string.Empty;
+            for (int i = 0; i < number; i++)
+            {
+                suffix += "0";
+            }
+            return suffix;
         }
     }
 }

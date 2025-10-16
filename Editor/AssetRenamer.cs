@@ -70,7 +70,7 @@ namespace NaxtorGames.AssetRenamer.EditorScripts
             _renameOrders.Insert(newIndex, renameOrder);
         }
 
-        public void ExecuteRenameOrders(Object objectInstance, int index = -1, bool preview = false)
+        public void ExecuteRenameOrders(Object objectInstance, int index = -1, bool isPreview = false)
         {
             if (objectInstance == null)
             {
@@ -81,18 +81,18 @@ namespace NaxtorGames.AssetRenamer.EditorScripts
 
             if (objectType == ObjectType.None)
             {
-                Debug.LogError($"{objectInstance.name} is neither an asset nor an scene object.");
+                Debug.LogError($"'{objectInstance.name}' is neither an asset nor an scene object!");
                 return;
             }
 
-            FileNameData fileNameData = new FileNameData(assetName);
+            FileNameData fileNameData = new FileNameData(assetName, objectType == ObjectType.Asset);
 
             foreach (RenameOrder renameOrder in _renameOrders)
             {
-                _ = renameOrder.ExecuteOrder(ref fileNameData, index);
+                _ = renameOrder.ExecuteOrder(ref fileNameData, isPreview, index);
             }
 
-            if (preview)
+            if (isPreview)
             {
                 AddToPreviewNameList(assetName, fileNameData.FullFileName, index, objectType == ObjectType.Asset);
             }

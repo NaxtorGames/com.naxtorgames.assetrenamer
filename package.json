@@ -1,10 +1,10 @@
 {
   "name": "com.naxtorgames.assetrenamer",
   "displayName": "Asset Renamer",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "author": "Naxtor Games",
   "description": "A simple Editor Window that lets you rename, insert or replace the names of your assets.",
   "dependencies": {
-    "com.naxtorgames.utillity": "0.1.1"
+    "com.naxtorgames.utility": "0.1.2"
   }
 }

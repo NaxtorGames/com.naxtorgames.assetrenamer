@@ -1,15 +1,19 @@
 using System.Collections.Generic;
-using UnityEngine;
+using System.Linq;
 using UnityEditor;
-using NaxtorGames.Utillity.EditorScripts;
+using UnityEngine;
+using NaxtorGames.Utilities.EditorScripts;
 
 using static UnityEditor.EditorGUILayout;
-using System.Linq;
+
+using Object = UnityEngine.Object;
 
 namespace NaxtorGames.AssetRenamer.EditorScripts
 {
     public sealed class AssetRenamer_EditorWindow : EditorWindow
     {
+        private const string ARROW_UP = "\u2191";
+        private const string ARROW_DOWN = "\u2193";
         private const string WINDOW_NAME = "Asset Renamer";
         private const int MAX_OBJECTS_FOR_AUTO_PREVIEW = 25;
 
@@ -69,7 +73,7 @@ namespace NaxtorGames.AssetRenamer.EditorScripts
             }
         }
 
-        [MenuItem(UtillityData.TOOL_MENU_PATH + WINDOW_NAME)]
+        [MenuItem(UtilityData.TOOL_MENU_PATH + WINDOW_NAME)]
         public static void OpenWindow()
         {
             if (s_visibleWindow == null)
@@ -245,8 +249,9 @@ namespace NaxtorGames.AssetRenamer.EditorScripts
             {
                 if (_assetRenamer.OrderCount > 0)
                 {
+                    const float SINGLE_ORDER_SIZE = 160.0f;
                     _orderScrollPosition = BeginScrollView(_orderScrollPosition,
-                        GUILayout.MinHeight(_assetRenamer.OrderCount == 1 ? 128.0f : 0.0f));
+                        GUILayout.MinHeight(_assetRenamer.OrderCount == 1 ? SINGLE_ORDER_SIZE : 0.0f));
 
                     for (int i = 0; i < _assetRenamer.OrderCount; i++)
                     {
@@ -280,7 +285,16 @@ namespace NaxtorGames.AssetRenamer.EditorScripts
 
             _ = BeginHorizontal();
 
-            s_foldoutPreview = Foldout(s_foldoutPreview, "Preview", true, EditorStyles.foldoutHeader);
+            if (_assetRenamer.PreviewNameCount == 0)
+            {
+                GUI.enabled = false;
+                _ = Foldout(false, new GUIContent("Preview", "To preview items they have to be build first."), true, EditorStyles.foldoutHeader);
+                GUI.enabled = true;
+            }
+            else
+            {
+                s_foldoutPreview = Foldout(s_foldoutPreview, "Preview", true, EditorStyles.foldoutHeader);
+            }
 
             _enableAutoPreview = ToggleLeft(new GUIContent("Auto", $"Updates the Preview List every time anything in this Window changes.\nMax Object count for auto preview: {MAX_OBJECTS_FOR_AUTO_PREVIEW}"), _enableAutoPreview, GUILayout.Width(50.0f));
 
@@ -303,7 +317,6 @@ namespace NaxtorGames.AssetRenamer.EditorScripts
                 DrawPreviewNames();
             }
 
-
             EndVertical();
         }
 
@@ -319,21 +332,23 @@ namespace NaxtorGames.AssetRenamer.EditorScripts
                 GUI.FocusControl(null);
             }
             EditorGUI.BeginDisabledGroup(listIndex <= 0);
-            if (GUILayout.Button(new GUIContent("^", "Move Up"), GUILayout.Width(25.0f)))
+            if (GUILayout.Button(new GUIContent(ARROW_UP, "Move Up"), GUILayout.Width(25.0f)))
             {
                 _assetRenamer.MoveOrderUp(renameOrder, listIndex);
                 GUI.FocusControl(null);
             }
             EditorGUI.EndDisabledGroup();
             EditorGUI.BeginDisabledGroup(listIndex >= _assetRenamer.OrderCount - 1);
-            if (GUILayout.Button(new GUIContent("v", "Move Down"), GUILayout.Width(25.0f)))
+            if (GUILayout.Button(new GUIContent(ARROW_DOWN, "Move Down"), GUILayout.Width(25.0f)))
             {
                 _assetRenamer.MoveOrderDown(renameOrder, listIndex);
                 GUI.FocusControl(null);
             }
             EditorGUI.EndDisabledGroup();
+
             Color defaultColor = GUI.backgroundColor;
             GUI.backgroundColor = Color.red;
+
             if (GUILayout.Button(new GUIContent("X", "Delete Order"), GUILayout.Width(25.0f)))
             {
                 RemoveOrder(renameOrder);
@@ -354,9 +369,14 @@ namespace NaxtorGames.AssetRenamer.EditorScripts
                 switch (renameOrder.EditType)
                 {
                     case EditType.Rename:
+                        const int MIN_DIGITS = 0;
+                        const int MAX_DIGITS = 8;
+
                         renameOrder.RenameName = TextField("New Name", renameOrder.RenameName);
                         renameOrder.RenameSuffix = TextField("Suffix", renameOrder.RenameSuffix);
-                        LabelField($"Example: {renameOrder.RenameName}{renameOrder.RenameSuffix}01");
+                        renameOrder.RenameDigitsCount = IntSlider("Digits", renameOrder.RenameDigitsCount, MIN_DIGITS, MAX_DIGITS);
+                        string numberSuffix = renameOrder.RenameDigitsCount > 0 ? 1.ToString(RenameOrder.FormatNumber(renameOrder.RenameDigitsCount)) : string.Empty;
+                        LabelField($"Example: {renameOrder.RenameName}{renameOrder.RenameSuffix}{numberSuffix}");
                         break;
                     case EditType.Replace:
                         renameOrder.ReplaceText = TextField("Replace", renameOrder.ReplaceText);
@@ -421,13 +441,13 @@ namespace NaxtorGames.AssetRenamer.EditorScripts
 
             if (_assetsToRename.Count == 1)
             {
-                _assetRenamer.ExecuteRenameOrders(_assetsToRename[0], preview: preview);
+                _assetRenamer.ExecuteRenameOrders(_assetsToRename[0], isPreview: preview);
             }
             else
             {
                 for (int i = 0; i < _assetsToRename.Count; i++)
                 {
-                    _assetRenamer.ExecuteRenameOrders(_assetsToRename[i], index: i, preview: preview);
+                    _assetRenamer.ExecuteRenameOrders(_assetsToRename[i], index: i, isPreview: preview);
                 }
             }
         }
