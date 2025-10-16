@@ -74,6 +74,7 @@ namespace NaxtorGames.AssetRenamer.EditorScripts
         }
 
         [MenuItem(UtilityData.TOOL_MENU_PATH + WINDOW_NAME)]
+        [MenuItem(UtilityData.WINDOW_MENU_PATH + WINDOW_NAME)]
         public static void OpenWindow()
         {
             if (s_visibleWindow == null)
@@ -145,6 +146,46 @@ namespace NaxtorGames.AssetRenamer.EditorScripts
         private void DrawAssetList()
         {
             _ = BeginVertical(WindowStyle);
+
+            _ = BeginHorizontal();
+
+            int selectionCount = Selection.count;
+
+            GUI.enabled = selectionCount > 0;
+            if (_assetsToRename.Count > 0)
+            {
+                if (GUILayout.Button("Replace With"))
+                {
+                    _assetsToRename.Clear();
+                    _assetRenamer.ClearPreviewNames();
+
+                    _assetsToRename.AddRange(Selection.objects);
+                    ValidateAssets(true, true, out _, out _);
+                    _assetEmpties = 0;
+                    _assetDuplicates = 0;
+                }
+                if (GUILayout.Button("Add"))
+                {
+                    _assetsToRename.AddRange(Selection.objects);
+                    ValidateAssets(true, true, out _, out _);
+                    _assetEmpties = 0;
+                    _assetDuplicates = 0;
+                }
+            }
+            else
+            {
+                if (GUILayout.Button("Add"))
+                {
+                    _assetsToRename.AddRange(Selection.objects);
+                    ValidateAssets(true, true, out _, out _);
+                    _assetEmpties = 0;
+                    _assetDuplicates = 0;
+                }
+            }
+            GUI.enabled = true;
+
+            LabelField($"Selected Objects ({selectionCount})", EditorStyles.boldLabel, GUILayout.Width(128.0f));
+            EndHorizontal();
 
             _ = BeginHorizontal();
 
